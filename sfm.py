@@ -28,31 +28,23 @@ def triangulate(R1,t1,R2,t2,kp1,kp2,k):
     cloud= cloud /(cloud[3,:]+1e-8)
     return cloud.T[:,:3]
 
-def keypoint_matches(kp1,des1,kp2,des2,point_cloud,is_point_cloud_avaliable):
+def keypoint_matches(kp1,des1,kp2,des2):
     matcher = cv.DescriptorMatcher_create(cv.DescriptorMatcher_FLANNBASED)
-    pts1 = cv.KeyPoint_convert(kp1)
-    pts2 = cv.KeyPoint_convert(kp2)
-    matches = matcher.knnMatch(des1,des2,k=2)
+    p1 = cv.KeyPoint_convert(kp1)
+    p2 = cv.KeyPoint_convert(kp2)
+    matche = matcher.knnMatch(des1,des2)
     good = []
     for m,n in matches:
-        if m.distance < 0.75*n.distance:
+        if m.distance < 0.7*n.distance:
             good.append(m)
 
-    src_p = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-    dst_p=np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1,1,2)
-    common_des1 = np.array([ des1[m.queryIdx] for m in good ])
-    common_des2 = np.array([ des2[m.trainIdx] for m in good ])
-    common_pts1 = np.float32(src_p)
-    common_pts2 = np.float32(dst_p)
-    ckp1 = [kp1[m.queryIdx] for m in good ]
-    ckp2 = [kp2[m.trainIdx] for m in good ]
-    if(is_point_cloud_avaliable == True):
-        print(len(point_cloud))
-        print(len(good))
-        point_cloud = np.array([point_cloud[m.queryIdx] for m in good ])
-        return pts1,pts2,common_pts1,common_pts2,common_des1,common_des2,ckp1,ckp2,point_cloud
-    else:
-        return pts1,pts2,common_pts1,common_pts2,common_des1,common_des2,ckp1,ckp2
+    p11 = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+    des1 = np.array([ des1[m.queryIdx] for m in good ])
+    p21=np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1,1,2)
+    des2 = np.array([ des2[m.trainIdx] for m in good ])
+    
+    
+    return good,p11,p21,des1,des2
 
 def feature_detection(img):
 
@@ -114,26 +106,22 @@ def constr_scene(cloud,color,name):
       fid.write(bytearray(struct.pack("fffccc",cloud[i,0],cloud[i,1],cloud[i,2],color[i,2].tobytes(),color[i,1].tobytes(),color[i,0].tobytes())))
     fid.close()
 
-def sfm(path,L):
-    point_cloud = []
-    color_data = []
+def sfm(path,im):
+    cloud = []
+    color = []
     trajectory = []
-    is_point_cloud_avaliable = False
+    avail = False
 
-    frame = 0
-    img_color = cv.imread(path +'/'+ L[frame])
-    print(frame)
+   
+    img_color = cv.imread(path +'/'+ im[0])
     img0 = cv.cvtColor(img_color, cv.COLOR_BGR2GRAY)
-    frame = frame + 1
-    kp0,des0 = feature_detection(img0,"Sift")
-    print(frame)
-    img1 = cv.imread(path +'/'+ L[frame],0)
-    frame = frame + 1
-    kp1,des1 = feature_detection(img1,"Sift")
+    kp0,des0 = feature_detection(img0)
+    img1 = cv.imread(path +'/'+ im[1])
+    kp1,des1 = feature_detection(img1)
 
-    pts0,pts1,common_pts0,common_pts1,common_des0,common_des1,ckp0,ckp1 = keypoint_matches(kp0,des0,kp1,des1,point_cloud,is_point_cloud_avaliable) 
+    good,common_pts0,common_pts1,common_des0,common_des1 = keypoint_matches(kp0,des0,kp1,des1) 
     
-    E,mask = cv.findEssentialMat(common_pts0,common_pts1,k,cv.RANSAC,0.999,1.0,1000)
+    E,mask = cv.findEssentialMat(common_pts0,common_pts1,k,cv.RANSAC,0.999,2.0,1599)
     common_pts0 = common_pts0[mask.ravel() == 1]
     common_pts1 = common_pts1[mask.ravel() == 1]
     common_des0 = common_des0[mask.ravel() == 1]
@@ -145,7 +133,6 @@ def sfm(path,L):
     common_des0 = common_des0[mask.ravel() == 255]
     common_des1 = common_des1[mask.ravel() == 255]
     
-    print(len(common_pts0),len(common_pts1))
     P1 = proj(k,np.eye(3).astype(np.float32),np.zeros((3,1))) 
     P2 = proj(k,R,t)
     point_cloud = triangulate(P1, P2, common_pts0, common_pts1)
@@ -155,45 +142,35 @@ def sfm(path,L):
     
     mat = point_cloud
     idx = common_pts0.reshape(-1,2).astype(np.uint8())
-    color_data = img_color[idx[:,0],idx[:,1]]
+    color = img_color[idx[:,0],idx[:,1]]
     #print(color_data)
-    while(frame<len(L)):
-        print(frame)
-        is_point_cloud_avaliable = True
-        img1_color = cv.imread(path +'/'+ L[frame - 1])
-        img2 = cv.imread(path +'/'+ L[frame],cv.IMREAD_GRAYSCALE)
+    for(i=2,i++,i<len(im):
+        img1_color = cv.imread(path +'/'+ im[i-1])
+        img2 = cv.imread(path +'/'+ im[i],cv.IMREAD_GRAYSCALE)
         kp2,des2 = feature_detection(img2,"Sift")
 
-        pts1,pts2,common_pts1,common_pts2,common_des1,common_des2,ckp1,ckp2,point_cloud = keypoint_matches(ckp1,common_des1,kp2,des2,point_cloud,is_point_cloud_avaliable)
+        good,common_pts1,common_pts2,common_des1,common_des2 = keypoint_matches(ckp1,common_des1,kp2,des2)
+        point_cloud = np.array([point_cloud[n.queryIdx] for n in good ])
 
         retval, rvec, t1, inliers = cv.solvePnPRansac(mat,pts, k, (0,0,0,0),useExtrinsicGuess = True ,iterationsCount = 70,reprojectionError = 4.5,flags = cv.SOLVEPNP_ITERATIVE)
         R1,_ = cv.Rodrigues(rvec)
-        
-        is_point_cloud_avaliable = False
-
         trajectory.append(t1)
 
         P3 = proj(k,R1,t1)
-
-        pts1,pts2,common_pts1,common_pts2,common_des1,common_des2,ckp1,ckp2 = keypoint_matches(kp1,des1,kp2,des2,point_cloud,is_point_cloud_avaliable)
+        good,common_pts1,common_pts2,common_des1,common_des2 = keypoint_matches(kp1,des1,kp2,des2)
         point_cloud = triangulate(P2, P3, common_pts1, common_pts2)
-
-        print(frame,reprojection_error(point_cloud,P3,common_pts2))
+        print(reprojection_error(point_cloud,P3,common_pts2))
 
         idx = common_pts1.reshape(-1,2).astype(np.uint8())
-
         mat = np.vstack((mat,point_cloud))
 
         color = np.vstack((color_data,img1_color[idx[:,0],idx[:,1]]))
         img1 = img2
         kp1,des1 = kp2,des2
-        pts1,common_pts1,common_des1,ckp1 = pts2,common_pts2,common_des2,ckp2
-        #print(len(ckp2))
-        #print(len(point_cloud))
+        pts1,common_pts1,common_des1 = pts2,common_pts2,common_des2
+     
         P2 = P3
-        frame = frame + 1
+        i= i + 1
     constr_scene(,mat[:,:3],color.reshape(-1,3),"statue")
-    traj = np.asarray(trajectory).reshape((-1,3))
     plt.figure()
-    plt.subplot(1, 1, 1, projection='3d').plot(traj[:, 0], traj[:, 1], traj[:, 2])
     plt.show()
