@@ -9,5 +9,6 @@ The aim was to construct 3D sparse reconstruction of a scene using a set of unor
 * Append the point in a .ply file
 * Repeat the above 4 steps for the series of images.
 
-
+* #### Results:
+|<img src="DSC_0342.JPG" width="300" height="300">|<img src="Statue.gif'" width="300" height="300">|
 
