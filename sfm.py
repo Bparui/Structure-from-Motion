@@ -149,10 +149,10 @@ def sfm(path,im):
         img2 = cv.imread(path +'/'+ im[i],cv.IMREAD_GRAYSCALE)
         kp2,des2 = feature_detection(img2,"Sift")
 
-        good,common_pts1,common_pts2,common_des1,common_des2 = keypoint_matches(ckp1,common_des1,kp2,des2)
+        good,common_pts1,common_pts2,common_des1,common_des2 = keypoint_matches(common_pts1,common_des1,kp2,des2)
         point_cloud = np.array([point_cloud[n.queryIdx] for n in good ])
 
-        retval, rvec, t1, inliers = cv.solvePnPRansac(mat,pts, k, (0,0,0,0),useExtrinsicGuess = True ,iterationsCount = 70,reprojectionError = 4.5,flags = cv.SOLVEPNP_ITERATIVE)
+        retval, rvec, t1, inliers = cv.solvePnPRansac(point_cloud,common_pts2, k, (0,0,0,0),useExtrinsicGuess = True ,iterationsCount = 70,reprojectionError = 4.5,flags = cv.SOLVEPNP_ITERATIVE)
         R1,_ = cv.Rodrigues(rvec)
         trajectory.append(t1)
 
@@ -167,7 +167,7 @@ def sfm(path,im):
         color = np.vstack((color_data,img1_color[idx[:,0],idx[:,1]]))
         img1 = img2
         kp1,des1 = kp2,des2
-        pts1,common_pts1,common_des1 = pts2,common_pts2,common_des2
+        kp1,common_pts1,common_des1 = kp2,common_pts2,common_des2
      
         P2 = P3
         i= i + 1
